@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SITREP — Standalone</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#11140F">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SITREP">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  :root {
+    --bg:#11140F; --surface:#181C13; --card:#1F2418; --card2:#252B1C;
+    --border:#333A26; --borderLight:#454D34; --text:#EDEAE0; --textMuted:#9AA184;
+    --textFaint:#6B7259; --brass:#C4A15E; --brassDim:#8A7343; --teal:#5AA69B; --blue:#4F8FD6;
+    --rust:#C1502E;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; }
+  .wrap { max-width: 640px; margin: 0 auto; padding-bottom: 60px; }
+  header { padding: calc(20px + env(safe-area-inset-top, 0px)) 16px 12px; border-bottom: 1px solid var(--border); }
+  .top-row { display:flex; align-items:center; justify-content:space-between; }
+  .brand { display:flex; align-items:center; gap:10px; }
+  .badge { width:34px; height:34px; background:var(--brass); color:var(--bg); border-radius:6px; display:flex; align-items:center; justify-content:center; font-weight:700; font-family:'Oswald'; }
+  .title { font-family:'Oswald'; font-weight:700; font-size:22px; letter-spacing:0.04em; }
+  .sublabel { background:none; border:none; color:var(--textFaint); font-size:10px; letter-spacing:0.1em; text-transform:uppercase; cursor:pointer; padding:0; }
+  .save-btn { background:var(--brass); color:var(--bg); border:none; padding:6px 10px; border-radius:5px; font-family:'Oswald'; font-size:11px; letter-spacing:0.05em; text-transform:uppercase; font-weight:600; cursor:pointer; }
+  .save-status { font-size:9px; color:var(--textFaint); font-family:'IBM Plex Mono'; text-transform:uppercase; min-width:64px; text-align:right; display:block; margin-top:4px; }
+  .save-status.error { color:var(--rust); }
+  .goal-row { margin-top:10px; font-size:12px; font-family:'IBM Plex Mono'; color:var(--textMuted); background:none; border:none; cursor:pointer; padding:0; }
+  nav { display:flex; gap:4px; padding: 10px 16px 0; border-bottom:1px solid var(--border); }
+  nav button { background:none; border:none; padding:8px 12px; font-family:'Oswald'; font-size:13px; letter-spacing:0.05em; text-transform:uppercase; color:var(--textFaint); border-bottom:2px solid transparent; cursor:pointer; }
+  nav button.active { color:var(--brass); border-bottom:2px solid var(--brass); }
+  main { padding: 16px; }
+  .day-card { border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:8px; }
+  .day-header { width:100%; background:var(--card); border:none; padding:10px 12px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; color:var(--text); }
+  .day-header .left { display:flex; align-items:center; gap:8px; }
+  .day-label { font-family:'Oswald'; font-weight:600; font-size:14px; }
+  .day-sub { color:var(--brass); font-size:10px; margin-left:4px; }
+  .day-body { background:var(--surface); padding:12px; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .day-body .full { grid-column: 1 / -1; }
+  label.field { display:flex; flex-direction:column; gap:4px; }
+  label.field span { color:var(--textFaint); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; }
+  input { background:var(--card2); border:1px solid var(--border); color:var(--text); font-family:'IBM Plex Mono'; font-size:13px; padding:6px 8px; border-radius:4px; outline:none; width:100%; }
+  input:focus { border-color: var(--brass); }
+  .computed { grid-column:1/-1; border-top:1px solid var(--border); margin-top:6px; padding-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:11px; color:var(--textFaint); }
+  .pill { font-family:'IBM Plex Mono'; font-weight:600; }
+  .pill.good { color:var(--teal); }
+  .pill.bad { color:var(--rust); }
+  .banner { padding:10px 14px; background:linear-gradient(90deg, var(--surface), var(--card)); border-bottom:2px solid var(--brass); font-family:'Oswald'; font-weight:600; letter-spacing:0.08em; color:var(--brass); font-size:15px; text-transform:uppercase; border-radius: 4px 4px 0 0;}
+  .banner-sub { background:var(--surface); color:var(--textMuted); font-size:11px; padding:6px 14px 12px; }
+  .lift-card { border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:14px; }
+  .lift-header { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--card); }
+  .lift-header .name { font-family:'Oswald'; font-weight:600; font-size:14px; }
+  .lift-header .tm { color:var(--textFaint); font-size:11px; font-family:'IBM Plex Mono'; margin-left:6px; }
+  .lift-header button { background:none; border:none; color:var(--brass); font-size:18px; cursor:pointer; }
+  .entries { display:flex; flex-wrap:wrap; gap:8px; padding:10px 12px; background:var(--surface); }
+  .entry { padding:6px 10px; border-radius:4px; border:1px solid var(--border); display:flex; flex-direction:column; align-items:center; min-width:48px; }
+  .entry .wt { font-family:'IBM Plex Mono'; font-weight:600; font-size:13px; }
+  .entry .sets { font-size:10px; }
+  .empty { border:1px dashed var(--border); border-radius:6px; padding:24px; text-align:center; color:var(--textFaint); font-size:13px; }
+  .error-banner { position:fixed; bottom:0; left:0; right:0; background:#3A1712; border-top:2px solid var(--rust); color:#F5D5CC; padding:12px 16px; font-family:'IBM Plex Mono'; font-size:12px; z-index:200; max-height:40vh; overflow:auto; }
+  .error-banner .close { float:right; background:none; border:none; color:#F5D5CC; font-size:16px; cursor:pointer; }
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.65); display:flex; align-items:flex-end; justify-content:center; z-index:100; }
+  .modal-box { background:var(--card); border:1px solid var(--borderLight); border-radius:12px 12px 0 0; width:100%; max-width:640px; padding:18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .modal-title { font-family:'Oswald'; font-weight:600; color:var(--brass); font-size:15px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:14px; }
+  .modal-fields { display:flex; flex-direction:column; gap:12px; margin-bottom:16px; }
+  .modal-actions { display:flex; gap:8px; }
+  .modal-actions button { flex:1; padding:11px; border-radius:6px; border:none; font-family:'Oswald'; font-size:13px; letter-spacing:0.05em; text-transform:uppercase; cursor:pointer; }
+  .modal-actions .cancel { background:var(--card2); color:var(--textMuted); border:1px solid var(--border); }
+  .modal-actions .confirm { background:var(--brass); color:var(--bg); font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div id="modal-root"></div>
+<div id="error-root"></div>
+
+<script>
+const COLORS = { teal: '#5AA69B', rust: '#C1502E' };
+
+window.onerror = function (msg, src, line, col, err) {
+  showError(`${msg}\n(line ${line}, col ${col})${err && err.stack ? '\n\n' + err.stack : ''}`);
+  return false;
+};
+window.addEventListener('unhandledrejection', (e) => {
+  showError('Promise rejection: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+});
+function showError(text) {
+  const root = document.getElementById('error-root');
+  root.innerHTML = `
+    <div class="error-banner">
+      <button class="close" onclick="document.getElementById('error-root').innerHTML=''">✕</button>
+      <div style="font-weight:600;margin-bottom:6px;color:#fff">SCRIPT ERROR — copy this to Claude:</div>
+      <pre style="white-space:pre-wrap;margin:0">${text}</pre>
+    </div>
+  `;
+}
+
+let state = null;
+let currentTab = 'week';
+let expandedDay = -1;
+let saveStatus = 'idle';
+
+function defaultState() {
+  const today = '2026-08-23'; // Sunday start of the week containing Fri 8/28
+  return {
+    weekLabel: weekLabelFor(1, today),
+    weekNumber: 1,
+    weekStartDate: today,
+    goal: { start: 187, target: 175, by: 'Thanksgiving (Nov 26, 2026)', pace: 0.67 },
+    days: freshWeekDays(today),
+    five31: buildFive31({ Bench: 265, Squat: 315, OHP: 145, Deadlift: 405 }, 'A'),
+    benchReps: [],
+    liftHistory: [],
+    history: [],
+  };
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem('sitrep-standalone-v1');
+    if (raw) {
+      const saved = JSON.parse(raw);
+      state = { ...defaultState(), ...saved }; // backfill any top-level fields older saves predate
+
+      // Deep-migrate five31: older saves may have a five31 object missing
+      // workingReps or per-lift bbb.reps (schema added later) — rebuild it
+      // from their existing TMs/wave rather than crash on missing fields.
+      const f = state.five31;
+      const needsMigration = !f || !f.workingReps || LIFTS.some((lift) => !f.bbb || !f.bbb[lift] || !Array.isArray(f.bbb[lift].reps));
+      if (needsMigration) {
+        const tms = (f && f.tms) || { Bench: 285, Squat: 330, OHP: 155, Deadlift: 420 };
+        const wave = (f && f.wave) || 'A';
+        state.five31 = buildFive31(tms, wave);
+      }
+      return;
+    }
+  } catch (e) {}
+  state = defaultState();
+}
+
+function saveState() {
+  saveStatus = 'saving';
+  updateSaveStatusDOM();
+  try {
+    localStorage.setItem('sitrep-standalone-v1', JSON.stringify(state));
+    saveStatus = 'saved';
+  } catch (e) {
+    saveStatus = 'error';
+  }
+  updateSaveStatusDOM();
+}
+
+function updateSaveStatusDOM() {
+  const el = document.getElementById('save-status');
+  if (!el) return; // full render hasn't happened yet
+  el.classList.toggle('error', saveStatus === 'error');
+  el.textContent = saveStatus === 'saving' ? 'saving…' : saveStatus === 'saved' ? 'saved' : saveStatus === 'error' ? 'save failed' : '';
+}
+
+let saveTimer = null;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 400);
+}
+
+function decToHM(dec) {
+  const h = Math.floor(dec);
+  const m = Math.round((dec - h) * 60);
+  return `${h}h ${m}m`;
+}
+function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
+const EPOC_BY_ZONE = { 1: 3, 2: 6, 3: 9, 4: 12, 5: 15 };
+const LIFTS = ['Bench', 'Squat', 'OHP', 'Deadlift'];
+const WAVES = {
+  A: { label: '5/5/5+', pct: [65, 75, 85], reps: ['5', '5', '5+'] },
+  B: { label: '3/3/3+', pct: [70, 80, 90], reps: ['3', '3', '3+'] },
+  C: { label: '5/3/1+', pct: [75, 85, 95], reps: ['5', '3', '1+'] },
+  D: { label: 'Deload', pct: [40, 50, 60], reps: ['5', '5', '5'] },
+};
+const WAVE_ORDER = ['A', 'B', 'C', 'D'];
+const roundTo5 = (x) => Math.round(x / 5) * 5;
+
+function buildFive31(tms, wave) {
+  const weights = {}, bbb = {}, workingReps = {};
+  LIFTS.forEach((lift) => {
+    weights[lift] = WAVES[wave].pct.map((p) => roundTo5(tms[lift] * p / 100));
+    bbb[lift] = { weight: roundTo5(tms[lift] * 0.5), reps: ['', '', '', '', ''] };
+    workingReps[lift] = ['', '', ''];
+  });
+  return { tms, wave, weights, bbb, workingReps };
+}
+
+function setTM(lift, val) {
+  const f = state.five31;
+  f.tms[lift] = num(val);
+  f.weights[lift] = WAVES[f.wave].pct.map((p) => roundTo5(f.tms[lift] * p / 100));
+  f.bbb[lift].weight = roundTo5(f.tms[lift] * 0.5);
+  f.workingReps[lift] = ['', '', ''];
+  f.bbb[lift].reps = ['', '', '', '', ''];
+  scheduleSave();
+  render();
+}
+function setWave(wave) {
+  const f = state.five31;
+  f.wave = wave;
+  LIFTS.forEach((lift) => {
+    f.weights[lift] = WAVES[wave].pct.map((p) => roundTo5(f.tms[lift] * p / 100));
+    f.workingReps[lift] = ['', '', ''];
+    f.bbb[lift].reps = ['', '', '', '', ''];
+  });
+  scheduleSave();
+  render();
+}
+function setWorkingWeight(lift, setIdx, val) {
+  state.five31.weights[lift][setIdx] = num(val);
+  scheduleSave();
+}
+function setWorkingReps(lift, setIdx, val) {
+  state.five31.workingReps[lift][setIdx] = val;
+  scheduleSave();
+}
+function setBBBWeight(lift, val) {
+  state.five31.bbb[lift].weight = num(val);
+  scheduleSave();
+}
+function setBBBReps(lift, setIdx, val) {
+  state.five31.bbb[lift].reps[setIdx] = val;
+  scheduleSave();
+}
+function archiveLifts() {
+  const nextLabel = `Cycle ${(state.liftHistory || []).length + 1}`;
+  const f = state.five31;
+  const completedWave = f.wave;
+  const willBump = completedWave === 'C';
+  const desc = willBump
+    ? 'You just finished the 5/3/1+ week — TMs bump automatically after this (+5 Bench/OHP, +10 Squat/Deadlift), and BBB weight updates to half of the new TM. Edit any TM afterward if it shouldn\'t have gone up.'
+    : `Logs this week and moves you into the ${WAVES[WAVE_ORDER[(WAVE_ORDER.indexOf(completedWave)+1)%4]].label} week. TMs only bump after completing the 5/3/1+ week, so nothing changes there yet.`;
+  openModal('Archive This Week\'s Lifts', [{ label: 'Cycle label', value: nextLabel }], ([label]) => {
+    if (!label) return;
+    const tops = {};
+    LIFTS.forEach((lift) => { tops[lift] = { weight: f.weights[lift][2], reps: f.workingReps[lift][2] || '—' }; });
+
+    if (!state.liftHistory) state.liftHistory = [];
+    state.liftHistory.push({ label, wave: WAVES[completedWave].label, tops, bumped: willBump });
+
+    if (willBump) {
+      const bump = { Bench: 5, OHP: 5, Squat: 10, Deadlift: 10 };
+      LIFTS.forEach((lift) => { f.tms[lift] = f.tms[lift] + bump[lift]; });
+    }
+    f.wave = WAVE_ORDER[(WAVE_ORDER.indexOf(completedWave) + 1) % 4];
+    LIFTS.forEach((lift) => {
+      f.weights[lift] = WAVES[f.wave].pct.map((p) => roundTo5(f.tms[lift] * p / 100));
+      f.workingReps[lift] = ['', '', ''];
+      f.bbb[lift].reps = ['', '', '', '', ''];
+      if (willBump) f.bbb[lift].weight = roundTo5(f.tms[lift] * 0.5);
+    });
+    saveState();
+    render();
+  }, 'Archive', desc);
+}
+function deleteLiftHistoryEntry(i) {
+  openModal('Delete Cycle?', [], () => {
+    state.liftHistory.splice(i, 1);
+    saveState();
+    render();
+  }, 'Delete', `This removes "${state.liftHistory[i].label}" from your lift history. This can't be undone.`);
+}
+function renderLiftHistory() {
+  const hist = state.liftHistory || [];
+  if (!hist.length) {
+    return `
+      <div class="banner">Lift History</div>
+      <div class="banner-sub">Top set hit each cycle</div>
+      <div class="empty">No archived cycles yet — use "Archive Lift Week & Bump TMs" on the Lifts tab once a cycle wraps up.</div>
+    `;
+  }
+  return `
+    <div class="banner">Lift History</div>
+    <div class="banner-sub">Top set hit each cycle</div>
+    <div class="lift-card">
+      ${hist.map((h, i) => `
+        <div style="padding:10px 12px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="font-family:'Oswald';color:var(--brass);font-size:13px">${h.label} <span style="color:var(--textFaint);font-size:10px;font-family:'IBM Plex Mono'">(${h.wave}${h.bumped ? ' · TM bumped' : ''})</span></div>
+            <button onclick="deleteLiftHistoryEntry(${i})" style="background:none;border:none;color:var(--rust);font-size:15px;cursor:pointer;padding:0 4px">✕</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;font-size:11px;font-family:'IBM Plex Mono';color:var(--textMuted)">
+            ${LIFTS.map(lift => `<div>${lift}: <span style="color:var(--text)">${h.tops[lift].weight} × ${h.tops[lift].reps}</span></div>`).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+function setSleep(i, part, val) {
+  const d = state.days[i];
+  if (part === 'h') d.sleepH = val; else d.sleepM = val;
+  const h = num(d.sleepH), m = num(d.sleepM);
+  d.sleep = (h + m / 60).toFixed(3);
+  scheduleSave();
+}
+function setZone(i, zone) {
+  state.days[i].zone = zone;
+  state.days[i].epocPct = zone && EPOC_BY_ZONE[zone] !== undefined ? String(EPOC_BY_ZONE[zone]) : '0';
+  scheduleSave();
+  render();
+}
+
+function addDays(isoDate, n) {
+  const d = new Date(isoDate + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function formatMD(isoDate) {
+  const d = new Date(isoDate + 'T00:00:00');
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+function formatMDY(isoDate) {
+  const d = new Date(isoDate + 'T00:00:00');
+  return `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`;
+}
+function formatRange(startISO) {
+  return `${formatMD(startISO)} – ${formatMD(addDays(startISO, 6))}`;
+}
+function weekLabelFor(weekNumber, startISO) {
+  return `Week ${weekNumber} - ${formatMDY(startISO)} - ${formatMDY(addDays(startISO, 6))}`;
+}
+function freshWeekDays(startISO) {
+  return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((label, i) => ({
+    label,
+    sub: formatMD(addDays(startISO, i)),
+    na: false,
+  }));
+}
+
+function openModal(title, fields, onSubmit, confirmLabel, description) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-overlay" id="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-title">${title}</div>
+        ${description ? `<div style="color:var(--textMuted);font-size:13px;margin-bottom:14px;line-height:1.4">${description}</div>` : ''}
+        ${fields.length ? `<div class="modal-fields">
+          ${fields.map((f, i) => `
+            <label class="field">
+              <span>${f.label}</span>
+              <input id="modal-field-${i}" type="${f.type || 'text'}" value="${f.value ?? ''}" placeholder="${f.placeholder || ''}" />
+            </label>
+          `).join('')}
+        </div>` : ''}
+        <div class="modal-actions">
+          <button class="cancel" id="modal-cancel">Cancel</button>
+          <button class="confirm" id="modal-confirm">${confirmLabel || 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-overlay').onclick = (e) => { if (e.target.id === 'modal-overlay') closeModal(); };
+  document.getElementById('modal-confirm').onclick = () => {
+    try {
+      const values = fields.map((f, i) => document.getElementById(`modal-field-${i}`).value);
+      closeModal();
+      onSubmit(values);
+    } catch (err) {
+      showError('Modal action failed: ' + err.message + (err.stack ? '\n\n' + err.stack : ''));
+    }
+  };
+  setTimeout(() => { const first = document.getElementById('modal-field-0'); if (first) first.focus(); }, 50);
+}
+
+function closeModal() {
+  document.getElementById('modal-root').innerHTML = '';
+}
+
+function computeDay(d) {
+  if (d.na || !d.calories) return null;
+  const workoutCal = num(d.workoutCal);
+  const epoc = Math.round(workoutCal * (num(d.epocPct) / 100));
+  const steps = num(d.steps);
+  const workoutSteps = num(d.workoutSteps);
+  const nonWorkoutSteps = Math.max(steps - workoutSteps, 0);
+  const stepBonus = Math.max((nonWorkoutSteps - 2500) * 0.05, 0);
+  const myTDEE = 2210 + workoutCal + epoc + stepBonus;
+  const ouraTDEE = num(d.ouraTDEE);
+  const cal = num(d.calories);
+  const protein = num(d.protein), carbs = num(d.carbs), fat = num(d.fat);
+  const macroTotal = protein*4 + carbs*4 + fat*9;
+  const pPct = macroTotal ? (protein*4)/macroTotal : 0;
+  const cPct = macroTotal ? (carbs*4)/macroTotal : 0;
+  const fPct = macroTotal ? (fat*9)/macroTotal : 0;
+  const cvm = cal - myTDEE;
+  const cvo = ouraTDEE ? cal - ouraTDEE : null;
+  return {
+    myTDEE: Math.round(myTDEE), cvm: Math.round(cvm), cvo: cvo===null ? null : Math.round(cvo),
+    elm: cvm/3500, elo: cvo===null ? null : cvo/3500,
+    proVs: protein - 170, pPct, cPct, fPct,
+  };
+}
+
+function pill(val, unit) {
+  if (val === null || val === undefined || isNaN(val)) return '<span style="color:var(--textFaint)">—</span>';
+  const good = val < 0;
+  const sign = val > 0 ? '+' : '';
+  const cls = good ? 'good' : 'bad';
+  const display = unit === 'lbs' ? val.toFixed(3) : Math.round(val);
+  return `<span class="pill ${cls}">${sign}${display}${unit || ''}</span>`;
+}
+
+function render() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <header>
+      <div class="top-row">
+        <div class="brand">
+          <div class="badge">◎</div>
+          <div>
+            <div class="title">SITREP</div>
+            <button class="sublabel" onclick="editLabel()">${state.weekLabel} ✎</button>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <button class="save-btn" id="save-btn" onclick="saveState()">Save</button>
+          <button class="save-btn" style="background:var(--card2);color:var(--textMuted);border:1px solid var(--border);margin-left:4px" onclick="resetToCurrent()">Reset</button>
+          <br/>
+          <button class="save-btn" style="background:var(--card2);color:var(--brass);border:1px solid var(--brassDim);margin-top:4px" onclick="exportData()">Export</button>
+          <button class="save-btn" style="background:var(--card2);color:var(--brass);border:1px solid var(--brassDim);margin-left:4px;margin-top:4px" onclick="importData()">Import</button>
+          <span class="save-status" id="save-status"></span>
+        </div>
+      </div>
+      <button class="goal-row" onclick="editGoal()">${state.goal.start} → ${state.goal.target} lbs · ${state.goal.by}</button>
+    </header>
+    <nav>
+      ${[['week','Week'],['lifts','Lifts'],['history','Diet'],['cycles','Cycles']].map(([id,lbl]) => `<button class="${id===currentTab?'active':''}" onclick="setTab('${id}')">${lbl}</button>`).join('')}
+    </nav>
+    <main id="main"></main>
+  `;
+  const main = document.getElementById('main');
+  main.innerHTML = currentTab === 'week' ? renderWeek() : currentTab === 'lifts' ? renderLifts() : currentTab === 'cycles' ? renderLiftHistory() : renderHistory();
+}
+
+function renderWeek() {
+  const cards = state.days.map((d, i) => {
+    const c = computeDay(d);
+    const open = expandedDay === i;
+    return `
+      <div class="day-card">
+        <button class="day-header" onclick="toggleDay(${i})">
+          <div class="left">
+            <span class="day-label">${d.label}${d.sub ? `<span class="day-sub">· ${d.sub}</span>` : ''}</span>
+            ${d.na ? '<span style="color:var(--textFaint);font-size:11px">N/A</span>' : (d.weight ? `<span style="font-family:'IBM Plex Mono';color:var(--textMuted);font-size:12px">${d.weight} lbs</span>` : '')}
+          </div>
+          <div>${c && c.elo !== null ? pill(c.elo, 'lbs') : ''}</div>
+        </button>
+        ${open && !d.na ? `
+        <div class="day-body">
+          ${field('Weight (lbs)', d.weight, i, 'weight')}
+          <label class="field full">
+            <span>Sleep</span>
+            <div style="display:flex;gap:6px">
+              <select onchange="setSleep(${i}, 'h', this.value)" style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;outline:none;flex:1">
+                ${Array.from({length:13}, (_,h) => `<option value="${h}" ${String(d.sleepH)===String(h)?'selected':''}>${h} hr</option>`).join('')}
+              </select>
+              <select onchange="setSleep(${i}, 'm', this.value)" style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;outline:none;flex:1">
+                ${Array.from({length:60}, (_,m) => `<option value="${m}" ${String(d.sleepM)===String(m)?'selected':''}>${m} min</option>`).join('')}
+              </select>
+            </div>
+          </label>
+          ${field('Steps', d.steps, i, 'steps')}
+          ${field('Water (oz)', d.water, i, 'water')}
+          ${field('Workout Cal', d.workoutCal, i, 'workoutCal')}
+          <label class="field">
+            <span>HR Zone</span>
+            <select onchange="setZone(${i}, this.value)" style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;outline:none;width:100%">
+              <option value="">—</option>
+              <option value="1" ${d.zone==='1'?'selected':''}>Zone 1</option>
+              <option value="2" ${d.zone==='2'?'selected':''}>Zone 2</option>
+              <option value="3" ${d.zone==='3'?'selected':''}>Zone 3</option>
+              <option value="4" ${d.zone==='4'?'selected':''}>Zone 4</option>
+              <option value="5" ${d.zone==='5'?'selected':''}>Zone 5</option>
+            </select>
+          </label>
+          ${field('Workout Steps', d.workoutSteps, i, 'workoutSteps')}
+          ${field('Oura TDEE', d.ouraTDEE, i, 'ouraTDEE')}
+          ${field('Calories', d.calories, i, 'calories')}
+          ${field('Protein (g)', d.protein, i, 'protein')}
+          ${field('Carbs (g)', d.carbs, i, 'carbs')}
+          ${field('Fat (g)', d.fat, i, 'fat')}
+          ${c ? `
+          <div class="computed">
+            <div>My TDEE <span class="pill">${c.myTDEE}</span></div>
+            <div>Macros <span class="pill">${Math.round(c.pPct*100)}P/${Math.round(c.cPct*100)}C/${Math.round(c.fPct*100)}F</span></div>
+            <div>Cal vs My TDEE ${pill(c.cvm)}</div>
+            <div>Cal vs Oura ${pill(c.cvo)}</div>
+          </div>` : ''}
+          <button class="full" style="margin-top:10px;background:none;border:1px solid var(--rust);color:var(--rust);padding:7px;border-radius:5px;font-family:'Oswald';font-size:11px;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer" onclick="resetDay(${i})">Reset This Day</button>
+        </div>` : ''}
+      </div>
+    `;
+  }).join('');
+  const computed = state.days.map(computeDay).filter(Boolean);
+  const weights = state.days.map(d => d.weight ? num(d.weight) : null).filter(w => w !== null);
+  const avgWt = weights.length ? (weights.reduce((a,b) => a+b, 0) / weights.length) : null;
+  const eloVals = computed.filter(c => c.elo !== null);
+  const eloSum = eloVals.reduce((s,c) => s + (c.elo||0), 0);
+  const eloColor = eloSum < 0 ? 'var(--blue)' : 'var(--rust)';
+  const eloSign = eloSum > 0 ? '+' : '';
+
+  const summary = `
+    <div class="lift-card" style="margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+        <div style="padding:12px;border-right:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--textFaint);text-transform:uppercase;letter-spacing:0.06em">Week Avg Weight</div>
+          <div style="font-family:'IBM Plex Mono';font-size:18px;font-weight:600;margin-top:4px">${avgWt ? avgWt.toFixed(1) + ' lbs' : '—'}</div>
+        </div>
+        <div style="padding:12px">
+          <div style="font-size:10px;color:var(--textFaint);text-transform:uppercase;letter-spacing:0.06em">Exp. Weight Change</div>
+          <div style="font-family:'IBM Plex Mono';font-size:18px;font-weight:600;margin-top:4px;color:${eloVals.length ? eloColor : 'inherit'}">
+            ${eloVals.length ? `${eloSign}${eloSum.toFixed(3)} lbs` : '—'}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return cards + summary + `<button class="save-btn" style="width:100%;margin-top:8px;padding:10px" onclick="archiveWeek()">Archive Week & Start New</button>`;
+}
+
+function renderHistory() {
+  if (!state.history.length) {
+    return `
+      <div class="banner">Nutrition History</div>
+      <div class="banner-sub">Cumulative totals inserted at the end of each week</div>
+      <div class="empty">No archived weeks yet — use "Archive Week" on the Week tab once this week wraps up.</div>
+    `;
+  }
+  const rows = (h) => [
+    ['Avg Wt', h.avgWeight !== '—' ? h.avgWeight + ' lbs' : '—'],
+    ['Avg Sleep', h.avgSleep !== '—' ? decToHM(parseFloat(h.avgSleep)) : '—'],
+    ['Avg Steps', h.avgSteps],
+    ['Avg My TDEE', h.avgMyTDEE],
+    ['Avg Oura TDEE', h.avgOuraTDEE],
+    ['Avg Cal', h.avgCal],
+    ['Avg Protein', h.avgPro !== '—' ? h.avgPro + 'g' : '—'],
+    ['Macros P/C/F', h.avgP !== '—' ? `${h.avgP}/${h.avgC}/${h.avgF}%` : '—'],
+    ['Avg Cal vs My', h.avgCvm],
+    ['Avg Cal vs Oura', h.avgCvo],
+    ['Avg Pro vs 170g', h.avgProVs],
+    ['Avg Water', h.avgWater !== '—' ? h.avgWater + ' oz' : '—'],
+    ['Exp Loss (My)', h.expLossMy + ' lbs', parseFloat(h.expLossMy) < 0 ? 'var(--blue)' : 'var(--rust)'],
+    ['Exp Loss (Oura)', h.expLossOura + ' lbs', parseFloat(h.expLossOura) < 0 ? 'var(--blue)' : 'var(--rust)'],
+  ];
+
+  const weightTable = `
+    <div class="lift-card" style="margin-bottom:12px">
+      <div style="background:var(--card);padding:10px 12px;border-bottom:1px solid var(--border)">
+        <span style="font-family:'Oswald';font-weight:600;color:var(--brass);font-size:13px;letter-spacing:0.05em;text-transform:uppercase">Weight by Week</span>
+      </div>
+      ${state.history.map(h => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)">
+          <span style="font-family:'Inter';color:var(--textMuted);font-size:13px">${h.label}</span>
+          <span style="font-family:'IBM Plex Mono';font-weight:700;color:var(--text);font-size:16px">${h.avgWeight !== '—' ? h.avgWeight + ' lbs' : '—'}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  return `
+    <div class="banner">Nutrition History</div>
+    <div class="banner-sub">Cumulative totals inserted at the end of each week</div>
+    ${weightTable}
+    <div class="lift-card">
+      ${state.history.map((h, i) => `
+        <div style="padding:10px 12px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="font-family:'Oswald';color:var(--brass);font-size:13px">${h.label}</div>
+            <button onclick="deleteHistoryEntry(${i})" style="background:none;border:none;color:var(--rust);font-size:15px;cursor:pointer;padding:0 4px">✕</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;font-size:10px;font-family:'IBM Plex Mono';color:var(--textMuted);white-space:nowrap">
+            ${rows(h).map(([label, val, color]) => `<div style="overflow:hidden;text-overflow:ellipsis">${label}: <span style="color:${color || 'var(--text)'}">${val}</span></div>`).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function archiveWeek() {
+  openModal('Archive This Week', [{ label: 'Week label', value: state.weekLabel, placeholder: "e.g. Wk1 Jul26–Aug1" }], ([label]) => {
+    try {
+      if (!label) return;
+      const days = state.days;
+      const computed = days.map(computeDay).filter(Boolean);
+      const avg = (arr) => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : null;
+
+      const weights = days.map(d => d.weight ? num(d.weight) : null).filter(v => v !== null);
+      const steps = days.map(d => d.steps ? num(d.steps) : null).filter(v => v !== null);
+      const sleepVals = days.map(d => d.sleep ? num(d.sleep) : null).filter(v => v !== null);
+
+      // Build aligned arrays only from days that have computable data
+      const validDays = days.filter(d => computeDay(d));
+      const cList = validDays.map(computeDay);
+      const calList = validDays.map(d => num(d.calories));
+      const proList = validDays.map(d => num(d.protein));
+      const waterList = days.map(d => d.water !== undefined && d.water !== '' ? num(d.water) : null).filter(v => v !== null);
+
+      const summary = {
+        label,
+        avgWeight: weights.length ? avg(weights).toFixed(1) : '—',
+        avgSleep: sleepVals.length ? avg(sleepVals).toFixed(1) : '—',
+        avgSteps: steps.length ? Math.round(avg(steps)) : '—',
+        avgMyTDEE: cList.length ? Math.round(avg(cList.map(c => c.myTDEE))) : '—',
+        avgOuraTDEE: cList.length ? Math.round(avg(cList.filter(c => c.cvo !== null).map((c,i) => num(validDays[i].ouraTDEE)))) : '—',
+        avgCal: calList.length ? Math.round(avg(calList)) : '—',
+        avgPro: proList.length ? Math.round(avg(proList)) : '—',
+        avgP: cList.length ? Math.round(avg(cList.map(c => c.pPct)) * 100) : '—',
+        avgC: cList.length ? Math.round(avg(cList.map(c => c.cPct)) * 100) : '—',
+        avgF: cList.length ? Math.round(avg(cList.map(c => c.fPct)) * 100) : '—',
+        avgCvm: cList.length ? Math.round(avg(cList.map(c => c.cvm))) : '—',
+        avgCvo: cList.filter(c => c.cvo !== null).length ? Math.round(avg(cList.filter(c => c.cvo !== null).map(c => c.cvo))) : '—',
+        avgProVs: cList.length ? Math.round(avg(cList.map(c => c.proVs))) : '—',
+        avgWater: waterList.length ? Math.round(avg(waterList)) : '—',
+        expLossMy: cList.reduce((s,c) => s + c.elm, 0).toFixed(3),
+        expLossOura: cList.filter(c => c.elo !== null).reduce((s,c) => s + (c.elo||0), 0).toFixed(3),
+      };
+      state.history.push(summary);
+      let nextStart;
+      try {
+        nextStart = addDays(state.weekStartDate, 7);
+        if (isNaN(new Date(nextStart).getTime())) throw new Error('bad date');
+      } catch (e) {
+        nextStart = new Date().toISOString().slice(0, 10); // fallback: today
+      }
+      state.weekNumber = (state.weekNumber || 1) + 1;
+      state.weekStartDate = nextStart;
+      state.weekLabel = weekLabelFor(state.weekNumber, nextStart);
+      state.days = freshWeekDays(nextStart);
+      expandedDay = -1;
+      saveState();
+      render();
+    } catch (err) {
+      showError('archiveWeek() failed: ' + err.message + (err.stack ? '\n\n' + err.stack : ''));
+    }
+  });
+}
+
+function deleteHistoryEntry(i) {
+  openModal('Delete Archived Week?', [], () => {
+    state.history.splice(i, 1);
+    saveState();
+    render();
+  }, 'Delete', `This removes "${state.history[i].label}" from history. This can't be undone.`);
+}
+
+function resetDay(i) {
+  openModal(`Reset ${state.days[i].label}?`, [], () => {
+    const { label, sub, na } = state.days[i];
+    state.days[i] = { label, sub, na };
+    scheduleSave();
+    render();
+  }, 'Reset', "Clears everything logged for this day.");
+}
+
+function exportData() {
+  const json = JSON.stringify(state, null, 2);
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-overlay" id="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-title">Export Your Data</div>
+        <div style="color:var(--textMuted);font-size:12px;margin-bottom:10px">Copy everything below and paste it to Claude, or save it somewhere safe. Use Import to restore it later.</div>
+        <textarea id="export-text" readonly style="width:100%;height:180px;background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:11px;padding:8px;border-radius:4px;resize:vertical" onclick="this.select()">${json}</textarea>
+        <div class="modal-actions" style="margin-top:12px">
+          <button class="cancel" onclick="closeModal()">Close</button>
+          <button class="confirm" onclick="copyExport()">Copy</button>
+        </div>
+      </div>
+    </div>
+  `;
+  setTimeout(() => { const ta = document.getElementById('export-text'); if (ta) ta.select(); }, 50);
+}
+function copyExport() {
+  const ta = document.getElementById('export-text');
+  if (!ta) return;
+  ta.select();
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value);
+    } else {
+      document.execCommand('copy');
+    }
+  } catch (e) { /* selection is already visible for manual copy */ }
+}
+function importData() {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-overlay" id="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-title">Import Data</div>
+        <div style="color:var(--textMuted);font-size:12px;margin-bottom:10px">Paste a previously exported backup below. This replaces everything currently in the app.</div>
+        <textarea id="import-text" style="width:100%;height:180px;background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:11px;padding:8px;border-radius:4px;resize:vertical"></textarea>
+        <div class="modal-actions" style="margin-top:12px">
+          <button class="cancel" onclick="closeModal()">Cancel</button>
+          <button class="confirm" onclick="confirmImport()">Import</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function confirmImport() {
+  const ta = document.getElementById('import-text');
+  if (!ta || !ta.value.trim()) return;
+  try {
+    const parsed = JSON.parse(ta.value);
+    if (!parsed.days || !parsed.five31) throw new Error('This doesn\'t look like a SITREP export — missing expected fields.');
+    state = parsed;
+    closeModal();
+    saveState();
+    render();
+  } catch (e) {
+    showError('Import failed: ' + e.message);
+  }
+}
+function resetToCurrent() {
+  openModal('Reset App Data?', [], () => {
+    state = defaultState();
+    saveState();
+    render();
+  }, 'Reset', 'This replaces everything in the app with your current real data, discarding any test entries.');
+}
+
+function field(label, value, dayIdx, key, full) {
+  return `
+    <label class="field">
+      <span>${label}</span>
+      <input value="${value || ''}" oninput="updateDay(${dayIdx}, '${key}', this.value)" />
+    </label>
+  `;
+}
+
+function renderLifts() {
+  const f = state.five31;
+  const tmField = (lift) => `
+    <label class="field">
+      <span>${lift} TM</span>
+      <input type="number" value="${f.tms[lift]}" onchange="setTM('${lift}', this.value)"
+        style="background:var(--card2);border:1px solid var(--brass);color:var(--text);font-family:'IBM Plex Mono';font-size:14px;font-weight:600;padding:7px 8px;border-radius:4px;outline:none;width:100%" />
+    </label>
+  `;
+
+  const waveOptions = Object.keys(WAVES).map(k => `<option value="${k}" ${f.wave===k?'selected':''}>${WAVES[k].label}</option>`).join('');
+
+  const liftCard = (lift) => `
+    <div class="lift-card">
+      <div class="lift-header">
+        <div><span class="name">${lift}</span><span class="tm">TM ${f.tms[lift]}</span></div>
+      </div>
+      <div style="padding:10px 12px;background:var(--surface)">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          ${f.weights[lift].map((w, si) => `
+            <div>
+              <label class="field">
+                <span>${WAVES[f.wave].reps[si]} reps · Wt</span>
+                <input type="number" value="${w}" onchange="setWorkingWeight('${lift}', ${si}, this.value)"
+                  style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;outline:none;width:100%;text-align:center" />
+              </label>
+              <label class="field" style="margin-top:4px">
+                <span>Reps done</span>
+                <input type="number" value="${f.workingReps[lift][si]}" placeholder="—" onchange="setWorkingReps('${lift}', ${si}, this.value)"
+                  style="background:var(--card2);border:1px solid var(--brassDim);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;outline:none;width:100%;text-align:center" />
+              </label>
+            </div>
+          `).join('')}
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px">
+          <label class="field" style="margin-bottom:8px">
+            <span>BBB Weight (5x10)</span>
+            <input type="number" value="${f.bbb[lift].weight}" onchange="setBBBWeight('${lift}', this.value)"
+              style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;outline:none;width:100%;text-align:center" />
+          </label>
+          <span style="color:var(--textFaint);font-size:10px;letter-spacing:0.06em;text-transform:uppercase">BBB Reps (5 sets)</span>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:4px">
+            ${f.bbb[lift].reps.map((r, si) => `
+              <input type="number" value="${r}" placeholder="—" onchange="setBBBReps('${lift}', ${si}, this.value)"
+                style="background:var(--card2);border:1px solid var(--brassDim);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 4px;border-radius:4px;outline:none;width:100%;text-align:center" />
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return `
+    <div class="banner">5/3/1 — Training Maxes</div>
+    <div class="lift-card" style="padding:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${LIFTS.map(tmField).join('')}
+      </div>
+    </div>
+    <div style="margin:12px 0">
+      <label class="field">
+        <span>This Week's Wave</span>
+        <select onchange="setWave(this.value)" style="background:var(--card2);border:1px solid var(--brass);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:7px 8px;border-radius:4px;outline:none;width:100%">
+          ${waveOptions}
+        </select>
+      </label>
+    </div>
+    ${LIFTS.map(liftCard).join('')}
+    <button class="save-btn" style="width:100%;margin-top:8px;padding:10px" onclick="archiveLifts()">Archive This Week's Lifts</button>
+
+    <div class="banner" style="margin-top:20px">Bench — Max Reps @ 135</div>
+    <div class="lift-card">
+      ${state.benchReps.map(r => `
+        <div style="display:flex;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border)">
+          <span style="color:var(--textMuted);font-size:12px">${r.date}</span>
+          <span style="font-family:'IBM Plex Mono';font-weight:700;color:var(--brass);font-size:15px">${r.reps} <span style="font-size:10px;color:var(--textFaint);font-weight:400">/ 40</span></span>
+        </div>
+      `).join('')}
+    </div>
+    <button class="save-btn" style="width:100%;margin-top:8px;padding:10px" onclick="addBenchEntry()">+ Log Attempt</button>
+  `;
+}
+
+function toggleDay(i) { expandedDay = expandedDay === i ? -1 : i; render(); }
+function setTab(t) { currentTab = t; render(); }
+function updateDay(i, key, val) { state.days[i][key] = val; scheduleSave(); }
+function editLabel() {
+  openModal('Week Setup', [
+    { label: 'Week label', value: state.weekLabel },
+    { label: 'Week start date (Sunday)', value: state.weekStartDate, type: 'date' },
+  ], ([label, startDate]) => {
+    if (label) state.weekLabel = label;
+    if (startDate && startDate !== state.weekStartDate) {
+      state.weekStartDate = startDate;
+      state.days = freshWeekDays(startDate);
+    }
+    scheduleSave();
+    render();
+  });
+}
+function editGoal() {
+  openModal('Your Goal', [
+    { label: 'Starting weight (lbs)', value: state.goal.start, type: 'number' },
+    { label: 'Target weight (lbs)', value: state.goal.target, type: 'number' },
+    { label: 'Target date', value: state.goal.by },
+  ], ([start, target, by]) => {
+    state.goal = { start: num(start), target: num(target), by, pace: state.goal.pace };
+    scheduleSave();
+    render();
+  });
+}
+function addBenchEntry() {
+  openModal('Bench — Max Reps @ 135', [{ label: 'Reps @ 135 lbs', type: 'number' }], ([reps]) => {
+    if (!reps) return;
+    state.benchReps.push({ date: new Date().toLocaleDateString(), reps: num(reps) });
+    scheduleSave();
+    render();
+  });
+}
+
+loadState();
+render();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
