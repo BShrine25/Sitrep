@@ -34,7 +34,8 @@
   .save-status.error { color:var(--rust); }
   .goal-row { margin-top:10px; font-size:12px; font-family:'IBM Plex Mono'; color:var(--textMuted); background:none; border:none; cursor:pointer; padding:0; }
   nav { display:flex; gap:4px; padding: 10px 16px 0; border-bottom:1px solid var(--border); }
-  nav button { background:none; border:none; padding:8px 12px; font-family:'Oswald'; font-size:13px; letter-spacing:0.05em; text-transform:uppercase; color:var(--textFaint); border-bottom:2px solid transparent; cursor:pointer; }
+  nav { display:flex; gap:2px; padding: 10px 8px 0; border-bottom:1px solid var(--border); overflow-x:auto; }
+  nav button { background:none; border:none; padding:8px 8px; font-family:'Oswald'; font-size:12px; letter-spacing:0.03em; text-transform:uppercase; color:var(--textFaint); border-bottom:2px solid transparent; cursor:pointer; white-space:nowrap; flex-shrink:0; }
   nav button.active { color:var(--brass); border-bottom:2px solid var(--brass); }
   main { padding: 16px; }
   .day-card { border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:8px; }
@@ -108,19 +109,25 @@ let expandedDay = -1;
 let saveStatus = 'idle';
 
 function defaultState() {
-  const today = '2026-08-23'; // Sunday start of the week containing Fri 8/28
+  const today = '2026-09-13'; // Sunday start of the week; logging begins Fri 9/19
   return {
     weekLabel: weekLabelFor(1, today),
     weekNumber: 1,
     weekStartDate: today,
-    goal: { start: 187, target: 175, by: 'Thanksgiving (Nov 26, 2026)', pace: 0.67 },
+    goal: { start: 190, target: 180, by: 'Thanksgiving', byDate: '2026-11-26' },
     days: freshWeekDays(today),
-    five31: buildFive31({ Bench: 265, Squat: 315, OHP: 145, Deadlift: 405 }, 'A'),
+    five31: buildFive31({ Bench: 265, Squat: 305, OHP: 145, Deadlift: 395 }, 'A'),
     benchReps: [],
     liftHistory: [],
     history: [],
+    // Accessory lifts — logged for the current week, filed into accessoryHistory on archive
+    accessories: [],              // [{id, exercise, category, weight, setsReps: ['','','']}]
+    accessoryExercises: {},       // { exerciseName: category } — remembers category after first custom add
+    accessoryHistory: { Chest: [], Back: [], Shoulders: [], Legs: [] },
   };
 }
+const LIFT_TO_BODYPART = { Bench: 'Chest', Deadlift: 'Back', Squat: 'Legs', OHP: 'Shoulders' };
+const BODY_PARTS = ['Chest', 'Back', 'Shoulders', 'Legs'];
 
 function loadState() {
   try {
@@ -241,15 +248,33 @@ function archiveLifts() {
   const completedWave = f.wave;
   const willBump = completedWave === 'C';
   const desc = willBump
-    ? 'You just finished the 5/3/1+ week — TMs bump automatically after this (+5 Bench/OHP, +10 Squat/Deadlift), and BBB weight updates to half of the new TM. Edit any TM afterward if it shouldn\'t have gone up.'
+    ? 'You just finished the 5/3/1+ week \u2014 TMs bump automatically after this (+5 Bench/OHP, +10 Squat/Deadlift), and BBB weight updates to half of the new TM. Edit any TM afterward if it shouldn\'t have gone up.'
     : `Logs this week and moves you into the ${WAVES[WAVE_ORDER[(WAVE_ORDER.indexOf(completedWave)+1)%4]].label} week. TMs only bump after completing the 5/3/1+ week, so nothing changes there yet.`;
   openModal('Archive This Week\'s Lifts', [{ label: 'Cycle label', value: nextLabel }], ([label]) => {
     if (!label) return;
     const tops = {};
-    LIFTS.forEach((lift) => { tops[lift] = { weight: f.weights[lift][2], reps: f.workingReps[lift][2] || '—' }; });
+    const full = {};
+    LIFTS.forEach((lift) => {
+      tops[lift] = { weight: f.weights[lift][2], reps: f.workingReps[lift][2] || '\u2014' };
+      full[lift] = {
+        bodyPart: LIFT_TO_BODYPART[lift],
+        sets: f.weights[lift].map((w, i) => ({ weight: w, reps: f.workingReps[lift][i] || '\u2014' })),
+        bbb: { weight: f.bbb[lift].weight, reps: f.bbb[lift].reps.map(r => r || '\u2014') },
+      };
+    });
 
     if (!state.liftHistory) state.liftHistory = [];
-    state.liftHistory.push({ label, wave: WAVES[completedWave].label, tops, bumped: willBump });
+    state.liftHistory.push({ label, wave: WAVES[completedWave].label, tops, full, bumped: willBump });
+
+    // File any logged accessories into their body-part history, then clear for the new week
+    (state.accessories || []).forEach((a) => {
+      if (!a.exercise) return;
+      if (!state.accessoryHistory[a.category]) state.accessoryHistory[a.category] = [];
+      state.accessoryHistory[a.category].push({
+        label, exercise: a.exercise, weight: a.weight, setsReps: a.setsReps.slice(),
+      });
+    });
+    state.accessories = [];
 
     if (willBump) {
       const bump = { Bench: 5, OHP: 5, Squat: 10, Deadlift: 10 };
@@ -273,31 +298,91 @@ function deleteLiftHistoryEntry(i) {
     render();
   }, 'Delete', `This removes "${state.liftHistory[i].label}" from your lift history. This can't be undone.`);
 }
+let historyCategory = 'Chest';
+let accessoryFilter = { Chest: '', Back: '', Shoulders: '', Legs: '' };
+function setAccessoryFilter(cat, val) { accessoryFilter[cat] = val; render(); }
+function setHistoryCategory(cat) { historyCategory = cat; render(); }
+function toggleFullSets(idx) {
+  const el = document.getElementById(`full-sets-${idx}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
 function renderLiftHistory() {
+  const cat = historyCategory;
+  const lift = LIFTS.find(l => LIFT_TO_BODYPART[l] === cat);
   const hist = state.liftHistory || [];
-  if (!hist.length) {
-    return `
-      <div class="banner">Lift History</div>
-      <div class="banner-sub">Top set hit each cycle</div>
-      <div class="empty">No archived cycles yet — use "Archive Lift Week & Bump TMs" on the Lifts tab once a cycle wraps up.</div>
+  const accHist = (state.accessoryHistory && state.accessoryHistory[cat]) || [];
+
+  const catTabs = BODY_PARTS.map(bp => `<option value="${bp}" ${bp===cat?'selected':''}>${bp}</option>`).join('');
+
+  const mainSection = hist.length === 0
+    ? `<div class="empty">No archived cycles yet for ${lift} (${cat}).</div>`
+    : `
+      <div class="lift-card" style="margin-bottom:14px">
+        ${hist.map((h, i) => {
+          const full = h.full && h.full[lift];
+          return `
+          <div style="padding:10px 12px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <div style="font-family:'Oswald';color:var(--brass);font-size:13px">${h.label} <span style="color:var(--textFaint);font-size:10px;font-family:'IBM Plex Mono'">(${h.wave}${h.bumped ? ' · TM bumped' : ''})</span></div>
+              <button onclick="deleteLiftHistoryEntry(${i})" style="background:none;border:none;color:var(--rust);font-size:15px;cursor:pointer;padding:0 4px">✕</button>
+            </div>
+            <div style="font-size:12px;font-family:'IBM Plex Mono';color:var(--textMuted)">
+              ${lift}: <span style="color:var(--text)">${h.tops[lift].weight} × ${h.tops[lift].reps}</span>
+              ${full ? `<button onclick="toggleFullSets(${i})" style="background:none;border:none;color:var(--brassDim);font-size:10px;text-decoration:underline;margin-left:8px">full sets</button>` : ''}
+            </div>
+            ${full ? `
+              <div id="full-sets-${i}" style="display:none;margin-top:6px;font-size:11px;font-family:'IBM Plex Mono';color:var(--textMuted)">
+                ${full.sets.map((s, si) => `<div>Set ${si+1}: ${s.weight} × ${s.reps}</div>`).join('')}
+                <div style="margin-top:4px">BBB ${full.bbb.weight}: ${full.bbb.reps.join(', ')}</div>
+              </div>
+            ` : ''}
+          </div>
+        `; }).join('')}
+      </div>
     `;
-  }
+
+  // Group this category's accessory history by exercise name, alphabetically
+  const byExercise = {};
+  accHist.forEach(a => {
+    if (!byExercise[a.exercise]) byExercise[a.exercise] = [];
+    byExercise[a.exercise].push(a);
+  });
+  const exerciseNames = Object.keys(byExercise).sort((a, b) => a.localeCompare(b));
+  const filter = accessoryFilter[cat] || '';
+  const namesToShow = filter ? exerciseNames.filter(n => n === filter) : exerciseNames;
+
+  const accSection = exerciseNames.length === 0
+    ? `<div class="empty">No accessory lifts filed under ${cat} yet.</div>`
+    : `
+      <div style="margin-bottom:10px">
+        <select onchange="setAccessoryFilter('${cat}', this.value)" style="width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:12px;padding:7px 8px;border-radius:4px;outline:none">
+          <option value="">All exercises (${exerciseNames.length})</option>
+          ${exerciseNames.map(n => `<option value="${n}" ${filter===n?'selected':''}>${n}</option>`).join('')}
+        </select>
+      </div>
+      <div class="lift-card">
+        ${namesToShow.map(name => `
+          <div style="padding:9px 12px;border-bottom:1px solid var(--border)">
+            <div style="font-family:'Oswald';color:var(--brass);font-size:13px;margin-bottom:3px">${name}</div>
+            ${byExercise[name].map(a => `
+              <div style="font-size:12px;font-family:'IBM Plex Mono';color:var(--textMuted)">${a.label}: ${a.weight}×${a.setsReps.join(',')}</div>
+            `).join('')}
+          </div>
+        `).join('')}
+      </div>
+    `;
+
   return `
-    <div class="banner">Lift History</div>
-    <div class="banner-sub">Top set hit each cycle</div>
-    <div class="lift-card">
-      ${hist.map((h, i) => `
-        <div style="padding:10px 12px;border-bottom:1px solid var(--border)">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <div style="font-family:'Oswald';color:var(--brass);font-size:13px">${h.label} <span style="color:var(--textFaint);font-size:10px;font-family:'IBM Plex Mono'">(${h.wave}${h.bumped ? ' · TM bumped' : ''})</span></div>
-            <button onclick="deleteLiftHistoryEntry(${i})" style="background:none;border:none;color:var(--rust);font-size:15px;cursor:pointer;padding:0 4px">✕</button>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;font-size:11px;font-family:'IBM Plex Mono';color:var(--textMuted)">
-            ${LIFTS.map(lift => `<div>${lift}: <span style="color:var(--text)">${h.tops[lift].weight} × ${h.tops[lift].reps}</span></div>`).join('')}
-          </div>
-        </div>
-      `).join('')}
+    <div class="banner">History</div>
+    <div style="margin:10px 0">
+      <select onchange="setHistoryCategory(this.value)" style="width:100%;background:var(--card2);border:1px solid var(--brass);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:7px 8px;border-radius:4px;outline:none">
+        ${catTabs}
+      </select>
     </div>
+    <div class="banner-sub" style="margin-bottom:6px">${lift} — top set shown by default, full 8-set data stored</div>
+    ${mainSection}
+    <div class="banner-sub" style="margin:14px 0 6px">Accessories filed under ${cat}</div>
+    ${accSection}
   `;
 }
 function setSleep(i, part, val) {
@@ -437,9 +522,10 @@ function render() {
         </div>
       </div>
       <button class="goal-row" onclick="editGoal()">${state.goal.start} → ${state.goal.target} lbs · ${state.goal.by}</button>
+      <div style="font-family:'Oswald';font-weight:700;font-size:20px;color:var(--brass);margin-top:4px">${goalCountdownText()}</div>
     </header>
     <nav>
-      ${[['week','Week'],['lifts','Lifts'],['history','Diet'],['cycles','Cycles']].map(([id,lbl]) => `<button class="${id===currentTab?'active':''}" onclick="setTab('${id}')">${lbl}</button>`).join('')}
+      ${[['week','Week'],['lifts','Lifts'],['history','Diet'],['cycles','History']].map(([id,lbl]) => `<button class="${id===currentTab?'active':''}" onclick="setTab('${id}')">${lbl}</button>`).join('')}
     </nav>
     <main id="main"></main>
   `;
@@ -561,15 +647,40 @@ function renderHistory() {
 
   const weightTable = `
     <div class="lift-card" style="margin-bottom:12px">
-      <div style="background:var(--card);padding:10px 12px;border-bottom:1px solid var(--border)">
+      <div style="background:var(--card);padding:8px 12px;border-bottom:1px solid var(--border)">
         <span style="font-family:'Oswald';font-weight:600;color:var(--brass);font-size:13px;letter-spacing:0.05em;text-transform:uppercase">Weight by Week</span>
       </div>
       ${state.history.map(h => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-bottom:1px solid var(--border)">
           <span style="font-family:'Inter';color:var(--textMuted);font-size:13px">${h.label}</span>
-          <span style="font-family:'IBM Plex Mono';font-weight:700;color:var(--text);font-size:16px">${h.avgWeight !== '—' ? h.avgWeight + ' lbs' : '—'}</span>
+          <span style="font-family:'IBM Plex Mono';font-weight:700;color:var(--text);font-size:15px">${h.avgWeight !== '—' ? h.avgWeight + ' lbs' : '—'}</span>
         </div>
       `).join('')}
+    </div>
+  `;
+
+  const calTable = `
+    <div class="lift-card" style="margin-bottom:12px">
+      <div style="background:var(--card);padding:8px 12px;border-bottom:1px solid var(--border)">
+        <span style="font-family:'Oswald';font-weight:600;color:var(--brass);font-size:13px;letter-spacing:0.05em;text-transform:uppercase">Calories by Week</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:8px;padding:5px 12px;font-size:9px;color:var(--textFaint);text-transform:uppercase;letter-spacing:0.04em;border-bottom:1px solid var(--border)">
+        <span></span><span>Eaten</span><span>Burned</span><span>Deficit</span>
+      </div>
+      ${state.history.map(h => {
+        const eaten = h.avgCal, burned = h.avgOuraTDEE;
+        const hasBoth = typeof eaten === 'number' && typeof burned === 'number';
+        const deficit = hasBoth ? eaten - burned : null;
+        const sign = deficit !== null && deficit > 0 ? '+' : '';
+        const color = deficit === null ? 'var(--text)' : (deficit < 0 ? 'var(--blue)' : 'var(--rust)');
+        return `
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono';font-size:12px;white-space:nowrap">
+          <span style="color:var(--textMuted);overflow:hidden;text-overflow:ellipsis;font-family:'Inter';font-size:13px">${h.label}</span>
+          <span style="color:var(--text)">${eaten !== '—' ? eaten : '—'}</span>
+          <span style="color:var(--text)">${burned !== '—' ? burned : '—'}</span>
+          <span style="color:${color}">${deficit !== null ? sign + deficit : '—'}</span>
+        </div>
+      `; }).join('')}
     </div>
   `;
 
@@ -577,6 +688,7 @@ function renderHistory() {
     <div class="banner">Nutrition History</div>
     <div class="banner-sub">Cumulative totals inserted at the end of each week</div>
     ${weightTable}
+    ${calTable}
     <div class="lift-card">
       ${state.history.map((h, i) => `
         <div style="padding:10px 12px;border-bottom:1px solid var(--border)">
@@ -826,8 +938,46 @@ function renderLifts() {
       `).join('')}
     </div>
     <button class="save-btn" style="width:100%;margin-top:8px;padding:10px" onclick="addBenchEntry()">+ Log Attempt</button>
+
+    <div class="banner" style="margin-top:20px">Accessories</div>
+    <div class="banner-sub">Filed into the correct History category when you archive</div>
+    ${state.accessories.length === 0 ? `<div class="empty">None added this week.</div>` : state.accessories.map((a, ai) => {
+      const knownNames = Object.keys(state.accessoryExercises);
+      return `
+      <div class="lift-card" style="margin-bottom:10px">
+        <div style="padding:10px 12px">
+          <label class="field" style="margin-bottom:8px">
+            <span>Exercise</span>
+            <select onchange="setAccessoryExercise(${a.id}, this.value)" style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;width:100%">
+              <option value="">Select…</option>
+              ${knownNames.map(n => `<option value="${n}" ${a.exercise===n?'selected':''}>${n} (${state.accessoryExercises[n]})</option>`).join('')}
+              <option value="__custom__">+ Add custom exercise…</option>
+            </select>
+          </label>
+          ${a.exercise ? `
+            <div style="font-size:11px;color:var(--textFaint);margin-bottom:6px">Category: ${a.category}</div>
+            <label class="field" style="margin-bottom:8px">
+              <span>Weight</span>
+              <input type="number" value="${a.weight}" onchange="setAccessoryWeight(${a.id}, this.value)"
+                style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;width:100%;text-align:center" />
+            </label>
+            <span style="color:var(--textFaint);font-size:10px;letter-spacing:0.06em;text-transform:uppercase">Reps per set</span>
+            <div style="display:grid;grid-template-columns:repeat(${Math.min(a.setsReps.length,5)},1fr);gap:6px;margin-top:4px">
+              ${a.setsReps.map((r, si) => `
+                <input type="number" value="${r}" placeholder="Set ${si+1}" onchange="setAccessorySetReps(${a.id},${si},this.value)"
+                  style="background:var(--card2);border:1px solid var(--brassDim);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 4px;border-radius:4px;width:100%;text-align:center" />
+              `).join('')}
+            </div>
+            <button onclick="addAccessorySet(${a.id})" style="background:none;border:none;color:var(--brass);font-size:12px;text-decoration:underline;margin-top:6px">+ add set</button>
+          ` : ''}
+        </div>
+        <button onclick="deleteAccessoryEntry(${a.id})" style="width:100%;background:var(--card2);border:none;border-top:1px solid var(--border);color:var(--rust);padding:6px;font-size:11px">Remove This Lift</button>
+      </div>
+    `; }).join('')}
+    <button class="save-btn" style="width:100%;margin-top:8px;padding:10px" onclick="addAccessoryEntry()">+ Add Accessory Lift</button>
   `;
 }
+
 
 function toggleDay(i) { expandedDay = expandedDay === i ? -1 : i; render(); }
 function setTab(t) { currentTab = t; render(); }
@@ -846,17 +996,78 @@ function editLabel() {
     render();
   });
 }
+function goalCountdownText() {
+  const g = state.goal;
+  if (!g.byDate) return '';
+  const today = new Date(todayISOForGoal() + 'T00:00:00');
+  const target = new Date(g.byDate + 'T00:00:00');
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const days = Math.round((target - today) / msPerDay);
+  if (days <= 0) return `${g.by} is here`;
+  const weeks = days / 7;
+  const lbsNeeded = g.start - g.target;
+  const perWeek = weeks > 0 ? (lbsNeeded / weeks) : 0;
+  return `${days} days · ${perWeek.toFixed(2)} lb/wk`;
+}
+function todayISOForGoal() { return new Date().toISOString().slice(0, 10); }
 function editGoal() {
   openModal('Your Goal', [
     { label: 'Starting weight (lbs)', value: state.goal.start, type: 'number' },
     { label: 'Target weight (lbs)', value: state.goal.target, type: 'number' },
-    { label: 'Target date', value: state.goal.by },
-  ], ([start, target, by]) => {
-    state.goal = { start: num(start), target: num(target), by, pace: state.goal.pace };
+    { label: 'Target label (e.g. Thanksgiving)', value: state.goal.by },
+    { label: 'Target date (for the countdown)', value: state.goal.byDate, type: 'date' },
+  ], ([start, target, by, byDate]) => {
+    state.goal = { start: num(start), target: num(target), by, byDate };
     scheduleSave();
     render();
   });
 }
+function addAccessoryEntry() {
+  state.accessories.push({ id: Date.now() + Math.random(), exercise: '', category: '', weight: 0, setsReps: ['', '', ''] });
+  scheduleSave();
+  render();
+}
+function deleteAccessoryEntry(id) {
+  state.accessories = state.accessories.filter(a => a.id !== id);
+  scheduleSave();
+  render();
+}
+function setAccessoryExercise(id, value) {
+  const entry = state.accessories.find(a => a.id === id);
+  if (!entry) return;
+  if (value === '__custom__') {
+    openModal('New Accessory Exercise', [
+      { label: 'Exercise Name' },
+      { label: `Category (${BODY_PARTS.join(' / ')})` },
+    ], ([name, category]) => {
+      if (!name) return;
+      const matched = BODY_PARTS.find(b => b.toLowerCase() === (category || '').toLowerCase().trim()) || BODY_PARTS[0];
+      state.accessoryExercises[name] = matched;
+      entry.exercise = name;
+      entry.category = matched;
+      scheduleSave();
+      render();
+    });
+    return;
+  }
+  entry.exercise = value;
+  entry.category = state.accessoryExercises[value] || '';
+  scheduleSave();
+  render();
+}
+function setAccessoryWeight(id, val) {
+  const entry = state.accessories.find(a => a.id === id);
+  if (entry) { entry.weight = num(val); scheduleSave(); }
+}
+function setAccessorySetReps(id, idx, val) {
+  const entry = state.accessories.find(a => a.id === id);
+  if (entry) { entry.setsReps[idx] = val; scheduleSave(); }
+}
+function addAccessorySet(id) {
+  const entry = state.accessories.find(a => a.id === id);
+  if (entry) { entry.setsReps.push(''); scheduleSave(); render(); }
+}
+
 function addBenchEntry() {
   openModal('Bench — Max Reps @ 135', [{ label: 'Reps @ 135 lbs', type: 'number' }], ([reps]) => {
     if (!reps) return;
