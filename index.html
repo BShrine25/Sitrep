@@ -129,6 +129,16 @@ function defaultState() {
 const LIFT_TO_BODYPART = { Bench: 'Chest', Deadlift: 'Back', Squat: 'Legs', OHP: 'Shoulders' };
 const BODY_PARTS = ['Chest', 'Back', 'Shoulders', 'Legs'];
 
+function guessDateFromLabel(label) {
+  if (!label) return null;
+  const months = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 };
+  const m = label.match(/([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})/);
+  if (!m) return null;
+  const mon = months[m[1].slice(0,3).toLowerCase()];
+  if (mon === undefined) return null;
+  const d = new Date(parseInt(m[3]), mon, parseInt(m[2]));
+  return d.toISOString().slice(0, 10);
+}
 function loadState() {
   try {
     const raw = localStorage.getItem('sitrep-standalone-v1');
@@ -145,6 +155,13 @@ function loadState() {
         const tms = (f && f.tms) || { Bench: 285, Squat: 330, OHP: 155, Deadlift: 420 };
         const wave = (f && f.wave) || 'A';
         state.five31 = buildFive31(tms, wave);
+      }
+
+      // Deep-migrate goal: older saves may predate byDate (used for the countdown),
+      // or the old schema used a text-only "by" like "Thanksgiving (Nov 26, 2026)".
+      if (state.goal && !state.goal.byDate) {
+        const guess = guessDateFromLabel(state.goal.by);
+        state.goal.byDate = guess || defaultState().goal.byDate;
       }
       return;
     }
@@ -522,7 +539,7 @@ function render() {
         </div>
       </div>
       <button class="goal-row" onclick="editGoal()">${state.goal.start} → ${state.goal.target} lbs · ${state.goal.by}</button>
-      <div style="font-family:'Oswald';font-weight:700;font-size:20px;color:var(--brass);margin-top:4px">${goalCountdownText()}</div>
+      <div id="goal-countdown" style="font-family:'Oswald';font-weight:700;font-size:20px;color:var(--brass);margin-top:4px">${goalCountdownText()}</div>
     </header>
     <nav>
       ${[['week','Week'],['lifts','Lifts'],['history','Diet'],['cycles','History']].map(([id,lbl]) => `<button class="${id===currentTab?'active':''}" onclick="setTab('${id}')">${lbl}</button>`).join('')}
@@ -783,63 +800,40 @@ function resetDay(i) {
 
 function exportData() {
   const json = JSON.stringify(state, null, 2);
-  const root = document.getElementById('modal-root');
-  root.innerHTML = `
-    <div class="modal-overlay" id="modal-overlay">
-      <div class="modal-box">
-        <div class="modal-title">Export Your Data</div>
-        <div style="color:var(--textMuted);font-size:12px;margin-bottom:10px">Copy everything below and paste it to Claude, or save it somewhere safe. Use Import to restore it later.</div>
-        <textarea id="export-text" readonly style="width:100%;height:180px;background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:11px;padding:8px;border-radius:4px;resize:vertical" onclick="this.select()">${json}</textarea>
-        <div class="modal-actions" style="margin-top:12px">
-          <button class="cancel" onclick="closeModal()">Close</button>
-          <button class="confirm" onclick="copyExport()">Copy</button>
-        </div>
-      </div>
-    </div>
-  `;
-  setTimeout(() => { const ta = document.getElementById('export-text'); if (ta) ta.select(); }, 50);
-}
-function copyExport() {
-  const ta = document.getElementById('export-text');
-  if (!ta) return;
-  ta.select();
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(ta.value);
-    } else {
-      document.execCommand('copy');
-    }
-  } catch (e) { /* selection is already visible for manual copy */ }
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `sitrep-export-${dateStamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function importData() {
-  const root = document.getElementById('modal-root');
-  root.innerHTML = `
-    <div class="modal-overlay" id="modal-overlay">
-      <div class="modal-box">
-        <div class="modal-title">Import Data</div>
-        <div style="color:var(--textMuted);font-size:12px;margin-bottom:10px">Paste a previously exported backup below. This replaces everything currently in the app.</div>
-        <textarea id="import-text" style="width:100%;height:180px;background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:11px;padding:8px;border-radius:4px;resize:vertical"></textarea>
-        <div class="modal-actions" style="margin-top:12px">
-          <button class="cancel" onclick="closeModal()">Cancel</button>
-          <button class="confirm" onclick="confirmImport()">Import</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-function confirmImport() {
-  const ta = document.getElementById('import-text');
-  if (!ta || !ta.value.trim()) return;
-  try {
-    const parsed = JSON.parse(ta.value);
-    if (!parsed.days || !parsed.five31) throw new Error('This doesn\'t look like a SITREP export — missing expected fields.');
-    state = parsed;
-    closeModal();
-    saveState();
-    render();
-  } catch (e) {
-    showError('Import failed: ' + e.message);
-  }
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json,.json';
+  input.onchange = () => {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed.days || !parsed.five31) throw new Error('This doesn\'t look like a SITREP export — missing expected fields.');
+        state = parsed;
+        saveState();
+        render();
+      } catch (e) {
+        showError('Import failed: ' + e.message);
+      }
+    };
+    reader.onerror = () => showError('Import failed: could not read the file.');
+    reader.readAsText(file);
+  };
+  input.click();
 }
 function resetToCurrent() {
   openModal('Reset App Data?', [], () => {
@@ -981,7 +975,14 @@ function renderLifts() {
 
 function toggleDay(i) { expandedDay = expandedDay === i ? -1 : i; render(); }
 function setTab(t) { currentTab = t; render(); }
-function updateDay(i, key, val) { state.days[i][key] = val; scheduleSave(); }
+function updateDay(i, key, val) {
+  state.days[i][key] = val;
+  scheduleSave();
+  if (key === 'weight') {
+    const el = document.getElementById('goal-countdown');
+    if (el) el.textContent = goalCountdownText();
+  }
+}
 function editLabel() {
   openModal('Week Setup', [
     { label: 'Week label', value: state.weekLabel },
@@ -996,6 +997,12 @@ function editLabel() {
     render();
   });
 }
+function getLatestLoggedWeight() {
+  for (let i = state.days.length - 1; i >= 0; i--) {
+    if (state.days[i].weight) return num(state.days[i].weight);
+  }
+  return null;
+}
 function goalCountdownText() {
   const g = state.goal;
   if (!g.byDate) return '';
@@ -1005,7 +1012,9 @@ function goalCountdownText() {
   const days = Math.round((target - today) / msPerDay);
   if (days <= 0) return `${g.by} is here`;
   const weeks = days / 7;
-  const lbsNeeded = g.start - g.target;
+  const currentWeight = getLatestLoggedWeight();
+  const base = currentWeight !== null ? currentWeight : g.start;
+  const lbsNeeded = base - g.target;
   const perWeek = weeks > 0 ? (lbsNeeded / weeks) : 0;
   return `${days} days · ${perWeek.toFixed(2)} lb/wk`;
 }
