@@ -351,12 +351,16 @@ function renderLiftHistory() {
 
   const catTabs = BODY_PARTS.map(bp => `<option value="${bp}" ${bp===cat?'selected':''}>${bp}</option>`).join('');
 
-  const mainSection = hist.length === 0
+  const mainSection = !lift
+    ? '' // no main 5/3/1 lift maps to this category (e.g. Arms, Abs) — accessories-only
+    : hist.length === 0
     ? `<div class="empty">No archived cycles yet for ${lift} (${cat}).</div>`
     : `
       <div class="lift-card" style="margin-bottom:14px">
         ${hist.map((h, i) => {
           const full = h.full && h.full[lift];
+          const top = h.tops && h.tops[lift];
+          if (!top) return '';
           return `
           <div style="padding:10px 12px;border-bottom:1px solid var(--border)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -364,7 +368,7 @@ function renderLiftHistory() {
               <button onclick="deleteLiftHistoryEntry(${i})" style="background:none;border:none;color:var(--rust);font-size:15px;cursor:pointer;padding:0 4px">✕</button>
             </div>
             <div style="font-size:12px;font-family:'IBM Plex Mono';color:var(--textMuted)">
-              ${lift}: <span style="color:var(--text)">${h.tops[lift].weight} × ${h.tops[lift].reps}</span>
+              ${lift}: <span style="color:var(--text)">${top.weight} × ${top.reps}</span>
               ${full ? `<button onclick="toggleFullSets(${i})" style="background:none;border:none;color:var(--brassDim);font-size:10px;text-decoration:underline;margin-left:8px">full sets</button>` : ''}
             </div>
             ${full ? `
@@ -419,7 +423,7 @@ function renderLiftHistory() {
         ${catTabs}
       </select>
     </div>
-    <div class="banner-sub" style="margin-bottom:6px">${lift} — top set shown by default, full 8-set data stored</div>
+    ${lift ? `<div class="banner-sub" style="margin-bottom:6px">${lift} — top set shown by default, full 8-set data stored</div>` : ''}
     ${mainSection}
     <div class="banner-sub" style="margin:14px 0 6px">Accessories filed under ${cat}</div>
     ${accSection}
