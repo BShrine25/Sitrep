@@ -123,11 +123,11 @@ function defaultState() {
     // Accessory lifts — logged for the current week, filed into accessoryHistory on archive
     accessories: [],              // [{id, exercise, category, weight, setsReps: ['','','']}]
     accessoryExercises: {},       // { exerciseName: category } — remembers category after first custom add
-    accessoryHistory: { Chest: [], Back: [], Shoulders: [], Legs: [] },
+    accessoryHistory: { Chest: [], Back: [], Shoulders: [], Legs: [], Arms: [], Abs: [] },
   };
 }
 const LIFT_TO_BODYPART = { Bench: 'Chest', Deadlift: 'Back', Squat: 'Legs', OHP: 'Shoulders' };
-const BODY_PARTS = ['Chest', 'Back', 'Shoulders', 'Legs'];
+const BODY_PARTS = ['Chest', 'Back', 'Shoulders', 'Legs', 'Arms', 'Abs'];
 
 function guessDateFromLabel(label) {
   if (!label) return null;
@@ -163,6 +163,10 @@ function loadState() {
         const guess = guessDateFromLabel(state.goal.by);
         state.goal.byDate = guess || defaultState().goal.byDate;
       }
+
+      // Backfill any body-part categories added later (e.g. Arms, Abs)
+      if (!state.accessoryHistory) state.accessoryHistory = {};
+      BODY_PARTS.forEach((bp) => { if (!state.accessoryHistory[bp]) state.accessoryHistory[bp] = []; });
       return;
     }
   } catch (e) {}
@@ -315,6 +319,22 @@ function deleteLiftHistoryEntry(i) {
     render();
   }, 'Delete', `This removes "${state.liftHistory[i].label}" from your lift history. This can't be undone.`);
 }
+function moveExerciseCategory(exerciseName, fromCategory) {
+  const otherParts = BODY_PARTS.filter(b => b !== fromCategory);
+  const fieldLabel = `Move to (${otherParts.join(' / ')})`;
+  openModal(`Move "${exerciseName}"`, [{ label: fieldLabel }], ([dest]) => {
+    const matched = BODY_PARTS.find(b => b.toLowerCase() === (dest || '').toLowerCase().trim());
+    if (!matched || matched === fromCategory) return;
+    const moving = state.accessoryHistory[fromCategory].filter(a => a.exercise === exerciseName);
+    state.accessoryHistory[fromCategory] = state.accessoryHistory[fromCategory].filter(a => a.exercise !== exerciseName);
+    if (!state.accessoryHistory[matched]) state.accessoryHistory[matched] = [];
+    state.accessoryHistory[matched].push(...moving);
+    state.accessoryExercises[exerciseName] = matched;
+    historyCategory = matched;
+    scheduleSave();
+    render();
+  }, 'Move', `Moves every past entry for "${exerciseName}" and files future logs of it under the new category automatically.`);
+}
 let historyCategory = 'Chest';
 let accessoryFilter = { Chest: '', Back: '', Shoulders: '', Legs: '' };
 function setAccessoryFilter(cat, val) { accessoryFilter[cat] = val; render(); }
@@ -380,9 +400,12 @@ function renderLiftHistory() {
       <div class="lift-card">
         ${namesToShow.map(name => `
           <div style="padding:9px 12px;border-bottom:1px solid var(--border)">
-            <div style="font-family:'Oswald';color:var(--brass);font-size:13px;margin-bottom:3px">${name}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+              <span style="font-family:'Oswald';color:var(--brass);font-size:13px">${name}</span>
+              <button onclick="moveExerciseCategory('${name}','${cat}')" style="background:none;border:1px solid var(--brassDim);color:var(--brass);font-size:9px;padding:2px 6px;border-radius:3px">Move</button>
+            </div>
             ${byExercise[name].map(a => `
-              <div style="font-size:12px;font-family:'IBM Plex Mono';color:var(--textMuted)">${a.label}: ${a.weight}×${a.setsReps.join(',')}</div>
+              <div style="font-size:12px;font-family:'IBM Plex Mono';color:var(--textMuted);word-break:break-word">${a.label}: ${a.weight}×${a.setsReps.join(', ')}</div>
             `).join('')}
           </div>
         `).join('')}
@@ -634,7 +657,34 @@ function renderWeek() {
     </div>
   `;
 
-  return cards + summary + `<button class="save-btn" style="width:100%;margin-top:8px;padding:10px" onclick="archiveWeek()">Archive Week & Start New</button>`;
+  const calList = computed.map(c => c);
+  const avgCal = calList.length ? Math.round(state.days.reduce((s, d, i) => computeDay(d) ? s + num(d.calories) : s, 0) / calList.length) : null;
+  const avgOura = (() => {
+    const vals = state.days.filter(d => computeDay(d) && num(d.ouraTDEE)).map(d => num(d.ouraTDEE));
+    return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+  })();
+  const runningDeficit = (avgCal !== null && avgOura !== null) ? avgCal - avgOura : null;
+  const defColor = runningDeficit === null ? 'var(--text)' : (runningDeficit < 0 ? 'var(--blue)' : 'var(--rust)');
+  const defSign = runningDeficit !== null && runningDeficit > 0 ? '+' : '';
+
+  const runningCalBlock = `
+    <div class="lift-card" style="margin-top:10px">
+      <div style="background:var(--card);padding:8px 12px;border-bottom:1px solid var(--border)">
+        <span style="font-family:'Oswald';font-weight:600;color:var(--brass);font-size:13px;letter-spacing:0.05em;text-transform:uppercase">This Week — Running Average</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:8px;padding:5px 12px;font-size:9px;color:var(--textFaint);text-transform:uppercase;letter-spacing:0.04em;border-bottom:1px solid var(--border)">
+        <span></span><span>Eaten</span><span>Burned</span><span>Deficit</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:center;gap:8px;padding:9px 12px;font-family:'IBM Plex Mono';font-size:13px">
+        <span style="color:var(--textMuted);font-family:'Inter'">${calList.length} day${calList.length===1?'':'s'} logged</span>
+        <span style="color:var(--text)">${avgCal !== null ? avgCal : '—'}</span>
+        <span style="color:var(--text)">${avgOura !== null ? avgOura : '—'}</span>
+        <span style="color:${defColor}">${runningDeficit !== null ? defSign + runningDeficit : '—'}</span>
+      </div>
+    </div>
+  `;
+
+  return cards + summary + `<button class="save-btn" style="width:100%;margin-top:8px;padding:10px" onclick="archiveWeek()">Archive Week & Start New</button>` + runningCalBlock;
 }
 
 function renderHistory() {
@@ -875,12 +925,12 @@ function renderLifts() {
             <div>
               <label class="field">
                 <span>${WAVES[f.wave].reps[si]} reps · Wt</span>
-                <input type="number" value="${w}" onchange="setWorkingWeight('${lift}', ${si}, this.value)"
+                <input type="number" value="${w}" oninput="setWorkingWeight('${lift}', ${si}, this.value)"
                   style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;outline:none;width:100%;text-align:center" />
               </label>
               <label class="field" style="margin-top:4px">
                 <span>Reps done</span>
-                <input type="number" value="${f.workingReps[lift][si]}" placeholder="—" onchange="setWorkingReps('${lift}', ${si}, this.value)"
+                <input type="number" value="${f.workingReps[lift][si]}" placeholder="—" oninput="setWorkingReps('${lift}', ${si}, this.value)"
                   style="background:var(--card2);border:1px solid var(--brassDim);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;outline:none;width:100%;text-align:center" />
               </label>
             </div>
@@ -889,13 +939,13 @@ function renderLifts() {
         <div style="border-top:1px solid var(--border);padding-top:10px">
           <label class="field" style="margin-bottom:8px">
             <span>BBB Weight (5x10)</span>
-            <input type="number" value="${f.bbb[lift].weight}" onchange="setBBBWeight('${lift}', this.value)"
+            <input type="number" value="${f.bbb[lift].weight}" oninput="setBBBWeight('${lift}', this.value)"
               style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;outline:none;width:100%;text-align:center" />
           </label>
           <span style="color:var(--textFaint);font-size:10px;letter-spacing:0.06em;text-transform:uppercase">BBB Reps (5 sets)</span>
           <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:4px">
             ${f.bbb[lift].reps.map((r, si) => `
-              <input type="number" value="${r}" placeholder="—" onchange="setBBBReps('${lift}', ${si}, this.value)"
+              <input type="number" value="${r}" placeholder="—" oninput="setBBBReps('${lift}', ${si}, this.value)"
                 style="background:var(--card2);border:1px solid var(--brassDim);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 4px;border-radius:4px;outline:none;width:100%;text-align:center" />
             `).join('')}
           </div>
@@ -952,13 +1002,13 @@ function renderLifts() {
             <div style="font-size:11px;color:var(--textFaint);margin-bottom:6px">Category: ${a.category}</div>
             <label class="field" style="margin-bottom:8px">
               <span>Weight</span>
-              <input type="number" value="${a.weight}" onchange="setAccessoryWeight(${a.id}, this.value)"
+              <input type="number" value="${a.weight}" oninput="setAccessoryWeight(${a.id}, this.value)"
                 style="background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 8px;border-radius:4px;width:100%;text-align:center" />
             </label>
             <span style="color:var(--textFaint);font-size:10px;letter-spacing:0.06em;text-transform:uppercase">Reps per set</span>
-            <div style="display:grid;grid-template-columns:repeat(${Math.min(a.setsReps.length,5)},1fr);gap:6px;margin-top:4px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px;margin-top:4px">
               ${a.setsReps.map((r, si) => `
-                <input type="number" value="${r}" placeholder="Set ${si+1}" onchange="setAccessorySetReps(${a.id},${si},this.value)"
+                <input type="number" value="${r}" placeholder="Set ${si+1}" oninput="setAccessorySetReps(${a.id},${si},this.value)"
                   style="background:var(--card2);border:1px solid var(--brassDim);color:var(--text);font-family:'IBM Plex Mono';font-size:13px;padding:6px 4px;border-radius:4px;width:100%;text-align:center" />
               `).join('')}
             </div>
